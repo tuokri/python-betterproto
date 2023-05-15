@@ -1,6 +1,5 @@
 import os.path
 
-
 try:
     # betterproto[compiler] specific dependencies
     import black
@@ -20,8 +19,7 @@ except ImportError as err:
 from .models import OutputTemplate
 
 
-def outputfile_compiler(output_file: OutputTemplate) -> str:
-
+def _render_template(template: str, **kwargs) -> str:
     templates_folder = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "templates")
     )
@@ -31,9 +29,9 @@ def outputfile_compiler(output_file: OutputTemplate) -> str:
         lstrip_blocks=True,
         loader=jinja2.FileSystemLoader(templates_folder),
     )
-    template = env.get_template("template.py.j2")
+    template = env.get_template(template)
 
-    code = template.render(output_file=output_file)
+    code = template.render(**kwargs)
     code = isort.api.sort_code_string(
         code=code,
         show_diff=False,
@@ -49,3 +47,31 @@ def outputfile_compiler(output_file: OutputTemplate) -> str:
         src_contents=code,
         mode=black.Mode(),
     )
+
+
+def outputfile_init(
+    *,
+    output_file: OutputTemplate,
+    output_package_name: str,
+) -> str:
+    service_imports = (
+        name
+        for service in output_file.services
+        for name in (f"{service.py_name}Base", f"{service.py_name}Stub")
+    )
+    return _render_template(
+        "init.py.j2",
+        output_file=output_file,
+        package=output_package_name.split(".")[-1],
+        imports=sorted(
+            [
+                *[x.py_name for x in output_file.enums],
+                *[x.py_name for x in output_file.messages],
+                *service_imports,
+            ]
+        ),
+    )
+
+
+def outputfile_compiler(*, output_file: OutputTemplate) -> str:
+    return _render_template("template.py.j2", output_file=output_file)

@@ -23,6 +23,7 @@ from betterproto.lib.google.protobuf.compiler import (
 )
 
 from .compiler import outputfile_compiler
+from .compiler import outputfile_init
 from .models import (
     EnumDefinitionCompiler,
     FieldCompiler,
@@ -74,9 +75,13 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
     response.supported_features = CodeGeneratorResponseFeature.FEATURE_PROTO3_OPTIONAL
 
     request_data = PluginRequestCompiler(plugin_request_obj=request)
+
     # Gather output packages
     for proto_file in request.proto_file:
         output_package_name = proto_file.package
+        if not output_package_name:
+            output_package_name = pathlib.Path(proto_file.name).stem
+
         if output_package_name not in request_data.output_packages:
             # Create a new output if there is no output for this package
             request_data.output_packages[output_package_name] = OutputTemplate(
@@ -118,13 +123,20 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
                 read_protobuf_service(service, index, output_package)
 
     # Generate output files
+    outputs = {}
     output_paths: Set[pathlib.Path] = set()
     for output_package_name, output_package in request_data.output_packages.items():
         if not output_package.output:
             continue
 
         # Add files to the response object
-        output_path = pathlib.Path(*output_package_name.split("."), "__init__.py")
+        if not output_package.package_proto_obj.package:
+            output_path = pathlib.Path(
+                output_package.package_proto_obj.name
+            ).with_suffix(".py")
+        else:
+            output_path = pathlib.Path(*output_package_name.split("."))
+            output_path = (output_path / output_path.stem).with_suffix(".py")
         output_paths.add(output_path)
 
         response.file.append(
@@ -135,16 +147,30 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
             )
         )
 
-    # Make each output directory a package with __init__ file
-    init_files = {
-        directory.joinpath("__init__.py")
-        for path in output_paths
-        for directory in path.parents
-        if not directory.joinpath("__init__.py").exists()
-    } - output_paths
+        outputs[output_path] = (output_package, output_package_name)
 
-    for init_file in init_files:
-        response.file.append(CodeGeneratorResponseFile(name=str(init_file)))
+    # Make each output directory a package with __init__ file
+    init_files = set()
+    for output_path, (output_package, output_package_name) in outputs.items():
+        init_file = output_path.parent / "__init__.py"
+        if init_file not in init_files:
+            init_files.add(init_file)
+            # Write an empty __init__ file for protos
+            # without an explicit package declaration.
+            if not output_package.package_proto_obj.package:
+                content = ""
+            else:
+                content = outputfile_init(
+                    output_file=output_package,
+                    output_package_name=output_package_name,
+                )
+
+            response.file.append(
+                CodeGeneratorResponseFile(
+                    name=str(init_file),
+                    content=content,
+                )
+            )
 
     for output_package_name in sorted(output_paths.union(init_files)):
         print(f"Writing {output_package_name}", file=sys.stderr)
@@ -159,7 +185,6 @@ def _make_one_of_field_compiler(
     proto_obj: "FieldDescriptorProto",
     path: List[int],
 ) -> FieldCompiler:
-
     pydantic = output_package.pydantic_dataclasses
     Cls = PydanticOneOfFieldCompiler if pydantic else OneOfFieldCompiler
     return Cls(
