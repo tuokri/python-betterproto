@@ -25,7 +25,6 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 def clear_directory(dir_path: Path):
     for file_or_directory in dir_path.glob("*"):
-        print(file_or_directory)
         if file_or_directory.is_dir():
             shutil.rmtree(file_or_directory)
         else:
