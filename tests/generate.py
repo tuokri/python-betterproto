@@ -5,6 +5,7 @@ import platform
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional
 from typing import Set
 
 from tests.util import (
@@ -24,13 +25,23 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 def clear_directory(dir_path: Path):
     for file_or_directory in dir_path.glob("*"):
+        print(file_or_directory)
         if file_or_directory.is_dir():
             shutil.rmtree(file_or_directory)
         else:
             file_or_directory.unlink()
 
 
-async def generate(whitelist: Set[str], verbose: bool):
+async def generate(
+    whitelist: Set[str], verbose: bool, special_tests: Optional[Set[str]]
+):
+    if not special_tests:
+        special_tests = set()
+
+    shutil.rmtree(output_path_reference, ignore_errors=True)
+    shutil.rmtree(output_path_betterproto, ignore_errors=True)
+    shutil.rmtree(output_path_betterproto_pydantic, ignore_errors=True)
+
     test_case_names = set(get_directories(inputs_path)) - {"__pycache__"}
 
     path_whitelist = set()
@@ -51,7 +62,12 @@ async def generate(whitelist: Set[str], verbose: bool):
         ):
             continue
         generation_tasks.append(
-            generate_test_case_output(test_case_input_path, test_case_name, verbose)
+            generate_test_case_output(
+                test_case_input_path,
+                test_case_name,
+                verbose,
+                special=test_case_name in special_tests,
+            )
         )
 
     failed_test_cases = []
@@ -73,32 +89,56 @@ async def generate(whitelist: Set[str], verbose: bool):
 
 
 async def generate_test_case_output(
-    test_case_input_path: Path, test_case_name: str, verbose: bool
+    test_case_input_path: Path, test_case_name: str, verbose: bool, special: bool
 ) -> int:
     """
     Returns the max of the subprocess return values
     """
 
     test_case_output_path_reference = output_path_reference.joinpath(test_case_name)
-    test_case_output_path_betterproto = output_path_betterproto
-    test_case_output_path_betterproto_pyd = output_path_betterproto_pydantic
+    test_case_output_path_betterproto = (
+        (output_path_betterproto / test_case_name)
+        if special
+        else output_path_betterproto
+    )
+    test_case_output_path_betterproto_pyd = (
+        (output_path_betterproto_pydantic / test_case_name)
+        if special
+        else output_path_betterproto_pydantic
+    )
+
+    # Make sure not to clear other test cases' directories here.
+    clear_directory(test_case_output_path_reference / test_case_name)
+    clear_directory(test_case_output_path_betterproto / test_case_name)
+    clear_directory(test_case_output_path_betterproto_pyd / test_case_name)
 
     os.makedirs(test_case_output_path_reference, exist_ok=True)
     os.makedirs(test_case_output_path_betterproto, exist_ok=True)
     os.makedirs(test_case_output_path_betterproto_pyd, exist_ok=True)
-
-    clear_directory(test_case_output_path_reference)
-    clear_directory(test_case_output_path_betterproto)
 
     (
         (ref_out, ref_err, ref_code),
         (plg_out, plg_err, plg_code),
         (plg_out_pyd, plg_err_pyd, plg_code_pyd),
     ) = await asyncio.gather(
-        protoc(test_case_input_path, test_case_output_path_reference, True),
-        protoc(test_case_input_path, test_case_output_path_betterproto, False),
         protoc(
-            test_case_input_path, test_case_output_path_betterproto_pyd, False, True
+            test_case_input_path,
+            test_case_output_path_reference,
+            reference=True,
+            special=special,
+        ),
+        protoc(
+            test_case_input_path,
+            test_case_output_path_betterproto,
+            pydantic_dataclasses=False,
+            special=special,
+        ),
+        protoc(
+            test_case_input_path,
+            test_case_output_path_betterproto_pyd,
+            reference=False,
+            pydantic_dataclasses=True,
+            special=special,
         ),
     )
 
@@ -195,8 +235,17 @@ def main():
             # python < 3.7 does not have asyncio.WindowsProactorEventLoopPolicy
             asyncio.get_event_loop_policy().set_event_loop(asyncio.ProactorEventLoop())
 
+    # "Special" test cases contain proto files that cannot be compiled
+    # with protoc by giving them all as arguments to the same protoc
+    # invocation. Instead, they have to be compiled one by one. E.g.:
+    # 'protoc [other args...] special_proto_directory/*.proto'
+    # would fail, whereas compiling them one by one would succeed:
+    # 'protoc [args...] special_proto_directory/file1.proto'
+    # 'protoc [args...] special_proto_directory/file2.proto'
+    special_tests = {"proto2_no_package_with_duplicates"}
+
     try:
-        asyncio.run(generate(whitelist, verbose))
+        asyncio.run(generate(whitelist, verbose, special_tests))
     except AttributeError:
         # compatibility code for python < 3.7
         asyncio.get_event_loop().run_until_complete(generate(whitelist, verbose))

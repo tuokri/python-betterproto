@@ -131,12 +131,14 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
 
         # Add files to the response object
         if not output_package.package_proto_obj.package:
-            output_path = pathlib.Path(
-                output_package.package_proto_obj.name
-            ).with_suffix(".py")
+            name = output_package.package_proto_obj.name
+            name_parts = name.split(".")[:-1]  # Remove .proto suffix.
+            output_path = pathlib.Path(*name_parts)
         else:
             output_path = pathlib.Path(*output_package_name.split("."))
-            output_path = (output_path / output_path.stem).with_suffix(".py")
+            output_path = output_path / output_path.stem
+
+        output_path = output_path.with_suffix(".py")
         output_paths.add(output_path)
 
         response.file.append(

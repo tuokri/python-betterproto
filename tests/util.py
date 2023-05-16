@@ -44,10 +44,13 @@ async def protoc(
     output_dir: Union[str, Path],
     reference: bool = False,
     pydantic_dataclasses: bool = False,
+    special: bool = False,
 ):
     path: Path = Path(path).resolve()
     output_dir: Path = Path(output_dir).resolve()
     python_out_option: str = "python_betterproto_out" if not reference else "python_out"
+    special_commands = []
+    command = []
 
     if pydantic_dataclasses:
         plugin_path = Path("src/betterproto/plugin/main.py")
@@ -70,31 +73,81 @@ async def protoc(
                 plugin_path = Path(tf.name)
                 atexit.register(os.remove, plugin_path)
 
-        command = [
-            sys.executable,
-            "-m",
-            "grpc.tools.protoc",
-            f"--plugin=protoc-gen-custom={plugin_path.as_posix()}",
-            "--experimental_allow_proto3_optional",
-            "--custom_opt=pydantic_dataclasses",
-            f"--proto_path={path.as_posix()}",
-            f"--custom_out={output_dir.as_posix()}",
-            *[p.as_posix() for p in path.glob("*.proto")],
-        ]
+        if special:
+            for p in path.glob("*.proto"):
+                special_commands.append(
+                    [
+                        sys.executable,
+                        "-m",
+                        "grpc.tools.protoc",
+                        f"--plugin=protoc-gen-custom={plugin_path.as_posix()}",
+                        "--experimental_allow_proto3_optional",
+                        "--custom_opt=pydantic_dataclasses",
+                        f"--proto_path={path.as_posix()}",
+                        f"--custom_out={output_dir.as_posix()}",
+                        str(p.resolve()),
+                    ]
+                )
+        else:
+            command = [
+                sys.executable,
+                "-m",
+                "grpc.tools.protoc",
+                f"--plugin=protoc-gen-custom={plugin_path.as_posix()}",
+                "--experimental_allow_proto3_optional",
+                "--custom_opt=pydantic_dataclasses",
+                f"--proto_path={path.as_posix()}",
+                f"--custom_out={output_dir.as_posix()}",
+                *[p.as_posix() for p in path.glob("*.proto")],
+            ]
     else:
-        command = [
-            sys.executable,
-            "-m",
-            "grpc.tools.protoc",
-            f"--proto_path={path.as_posix()}",
-            f"--{python_out_option}={output_dir.as_posix()}",
-            *[p.as_posix() for p in path.glob("*.proto")],
+        if special:
+            for p in path.glob("*.proto"):
+                special_commands.append(
+                    [
+                        sys.executable,
+                        "-m",
+                        "grpc.tools.protoc",
+                        f"--proto_path={path.as_posix()}",
+                        f"--{python_out_option}={output_dir.as_posix()}",
+                        str(p.resolve()),
+                    ]
+                )
+        else:
+            command = [
+                sys.executable,
+                "-m",
+                "grpc.tools.protoc",
+                f"--proto_path={path.as_posix()}",
+                f"--{python_out_option}={output_dir.as_posix()}",
+                *[p.as_posix() for p in path.glob("*.proto")],
+            ]
+
+    if special:
+        # pprint([f'{" ".join(c)} END' for c in special_commands])
+        procs = [
+            await asyncio.create_subprocess_exec(
+                *special_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            for special_cmd in special_commands
         ]
-    proc = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await proc.communicate()
-    return stdout, stderr, proc.returncode
+        coros = (proc.communicate() for proc in procs)
+        outputs = await asyncio.gather(*coros)
+        stdout = b"\n".join(out[0] for out in outputs)
+        stderr = b"\n".join(out[1] for out in outputs)
+        rcs = (proc.returncode for proc in procs) or (-1,)
+        rc = sum(rcs)
+
+    else:
+        proc = await asyncio.create_subprocess_exec(
+            *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        rc = proc.returncode
+
+    return stdout, stderr, rc
 
 
 @dataclass

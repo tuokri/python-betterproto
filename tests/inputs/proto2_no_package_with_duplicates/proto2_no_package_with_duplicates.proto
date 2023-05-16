@@ -1,0 +1,9 @@
+syntax = "proto2";
+
+message Test {
+
+}
+
+message SomethingThatIsDefinedInMultiplePlaces {
+    required uint32 dummy = 1;
+}
