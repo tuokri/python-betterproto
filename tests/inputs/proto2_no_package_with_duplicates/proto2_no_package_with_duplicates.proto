@@ -5,5 +5,5 @@ message Test {
 }
 
 message SomethingThatIsDefinedInMultiplePlaces {
-    required uint32 dummy = 1;
+  required uint32 dummy = 1;
 }

@@ -3,5 +3,5 @@ syntax = "proto2";
 import "proto2_no_package_with_duplicates_conflict_extended.proto";
 
 message MessageInExtendedProto_PseudoPackage {
-    optional .MessageInExtendedProto y = 1;
+  optional .MessageInExtendedProto y = 1;
 }
