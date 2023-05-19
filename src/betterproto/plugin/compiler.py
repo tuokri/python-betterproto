@@ -1,4 +1,5 @@
 import os.path
+import re
 
 try:
     # betterproto[compiler] specific dependencies
@@ -54,22 +55,42 @@ def outputfile_init(
     output_file: OutputTemplate,
     output_package_name: str,
 ) -> str:
+    # TODO: this func needs a bit of refactoring.
+
     service_imports = (
         name
         for service in output_file.services
         for name in (f"{service.py_name}Base", f"{service.py_name}Stub")
     )
+
+    import_objects = sorted(
+        [
+            *[x.py_name for x in output_file.enums],
+            *[x.py_name for x in output_file.messages],
+            *service_imports,
+        ]
+    )
+
+    other_package_imports = []
+    for imp in output_file.imports:
+        match = re.match(r"from\s+\.\s+import\s+(\w+)", imp)
+        if match:
+            other_package_imports.append(match.group(1))
+
+    __all__ = sorted(
+        [
+            *import_objects,
+            *other_package_imports,
+        ]
+    )
+
     return _render_template(
         "init.py.j2",
         output_file=output_file,
+        imports=output_file.imports,
         package=output_package_name.split(".")[-1],
-        imports=sorted(
-            [
-                *[x.py_name for x in output_file.enums],
-                *[x.py_name for x in output_file.messages],
-                *service_imports,
-            ]
-        ),
+        import_objects=import_objects,
+        __all__=__all__,
     )
 
 

@@ -51,7 +51,8 @@ async def generate(
             continue
         path_whitelist.add(item)
 
-    generation_tasks = []
+    filtered_test_case_names = []
+    filtered_test_case_input_paths = []
     for test_case_name in sorted(test_case_names):
         test_case_input_path = inputs_path.joinpath(test_case_name).resolve()
         if (
@@ -60,6 +61,13 @@ async def generate(
             and test_case_name not in name_whitelist
         ):
             continue
+        filtered_test_case_names.append(test_case_name)
+        filtered_test_case_input_paths.append(test_case_input_path)
+
+    generation_tasks = []
+    for test_case_name, test_case_input_path in zip(
+        filtered_test_case_names, filtered_test_case_input_paths
+    ):
         generation_tasks.append(
             generate_test_case_output(
                 test_case_input_path,
@@ -72,7 +80,8 @@ async def generate(
     failed_test_cases = []
     # Wait for all subprocs and match any failures to names to report
     for test_case_name, result in zip(
-        sorted(test_case_names), await asyncio.gather(*generation_tasks)
+        (name for name in filtered_test_case_names),
+        await asyncio.gather(*generation_tasks),
     ):
         if result != 0:
             failed_test_cases.append(test_case_name)

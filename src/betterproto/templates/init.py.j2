@@ -2,12 +2,15 @@
 # sources: {{ ', '.join(output_file.input_filenames) }}
 # plugin: python-betterproto
 # This file has been @generated
-{% for i in imports %}
+{% for i in import_objects %}
 from .{{ package }} import {{ i }}
+{% endfor %}
+{% for i in imports %}
+{{ i }}
 {% endfor %}
 
 __all__ = [
-{% for i in imports %}
-    "{{ i }}",
+{% for a in __all__ %}
+    "{{ a }}",
 {% endfor %}
 ]

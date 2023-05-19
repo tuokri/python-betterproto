@@ -39,6 +39,8 @@ from .models import (
     is_oneof,
 )
 
+import watchpoints
+
 
 def traverse(
     proto_file: FileDescriptorProto,
@@ -141,11 +143,14 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
         output_path = output_path.with_suffix(".py")
         output_paths.add(output_path)
 
+        if output_package_name == "import_service_input_message":
+            watchpoints.watch(output_package.imports)
+        content = outputfile_compiler(output_file=output_package)
         response.file.append(
             CodeGeneratorResponseFile(
                 name=str(output_path),
                 # Render and then format the output file
-                content=outputfile_compiler(output_file=output_package),
+                content=content,
             )
         )
 
@@ -159,13 +164,13 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
             init_files.add(init_file)
             # Write an empty __init__ file for protos
             # without an explicit package declaration.
-            if not output_package.package_proto_obj.package:
-                content = ""
-            else:
-                content = outputfile_init(
-                    output_file=output_package,
-                    output_package_name=output_package_name,
-                )
+            # if not output_package.package_proto_obj.package:
+            #     content = ""
+            # else:
+            content = outputfile_init(
+                output_file=output_package,
+                output_package_name=output_package_name,
+            )
 
             response.file.append(
                 CodeGeneratorResponseFile(
