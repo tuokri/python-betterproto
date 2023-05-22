@@ -39,7 +39,7 @@ from .models import (
     is_oneof,
 )
 
-import watchpoints
+# import watchpoints
 
 
 def traverse(
@@ -143,8 +143,8 @@ def generate_code(request: CodeGeneratorRequest) -> CodeGeneratorResponse:
         output_path = output_path.with_suffix(".py")
         output_paths.add(output_path)
 
-        if output_package_name == "import_service_input_message":
-            watchpoints.watch(output_package.imports)
+        # if output_package_name == "import_service_input_message":
+        #     watchpoints.watch(output_package.imports)
         content = outputfile_compiler(output_file=output_package)
         response.file.append(
             CodeGeneratorResponseFile(
