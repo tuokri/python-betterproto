@@ -2,11 +2,9 @@
 
 import os
 import sys
-from pathlib import Path
 
 from betterproto.lib.google.protobuf.compiler import (
     CodeGeneratorRequest,
-    CodeGeneratorResponse,
 )
 from betterproto.plugin.models import monkey_patch_oneof_index
 from betterproto.plugin.parser import generate_code
@@ -15,14 +13,14 @@ from betterproto.plugin.parser import generate_code
 def main() -> None:
     """The plugin's main entry point."""
     # Read request message from stdin
-    # data = sys.stdin.buffer.read()
-    data = (
-        Path(
-            "/home/tuomo/CLionProjects/HolyFnBingle/Boiler/apigen/python-betterproto/dump.bin"
-        )
-        .resolve()
-        .read_bytes()
-    )
+    data = sys.stdin.buffer.read()
+    # data = (
+    #     Path(
+    #         "/home/tuomo/CLionProjects/HolyFnBingle/Boiler/apigen/python-betterproto/dump.bin"
+    #     )
+    #     .resolve()
+    #     .read_bytes()
+    # )
 
     # Apply Work around for proto2/3 difference in protoc messages
     monkey_patch_oneof_index()
